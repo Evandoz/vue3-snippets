@@ -29,6 +29,14 @@ function encoder(str: string, encoding = 'utf-8') {
   return latin1String;
 }
 
+// isAliyunOssUrl
+// 例如 http://baihe-beijing.oss-cn-beijing.aliyuncs.com
+function isAliyunOssUrl(url: string): boolean {
+  return /^https?:\/\/([a-zA-Z0-9-]+)\.oss-([a-zA-Z0-9-]+)\.aliyuncs\.com/.test(
+    url,
+  );
+}
+
 // 避免多个组件同时触发刷新
 let globalRefreshPromise: Promise<any> | null = null;
 // 记录上次失败时间，防止接口挂了导致无限重试死循环
@@ -109,6 +117,13 @@ export default function useAliyunSts() {
   queryAliyunSts();
 
   const signatureUrl = (url: string, options: any = {}) => {
+    // 判断是否是阿里云OSS链接
+      // 例如 http://baihe-beijing.oss-cn-beijing.aliyuncs.com
+      // 不是的话直接返回原链接
+      if (!url || !isAliyunOssUrl(url)) {
+        return url;
+      }
+
     const { accessKeyId, accessKeySecret, securityToken, expiration } =
       aliyunStsState.value;
 
