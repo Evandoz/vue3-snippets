@@ -43,6 +43,14 @@ let globalRefreshPromise: Promise<any> | null = null;
 let lastErrorTimestamp = 0;
 const ERROR_COOL_DOWN = 10000; // 失败后冷却 10 秒
 
+/** signatureUrl 缓存：相同 URL 在有效期内返回相同签名，避免重复渲染触发子组件重新加载 */
+const signatureUrlCache = new Map<
+  string,
+  { signedUrl: string; cachedAt: number }
+>();
+const CACHE_MAX_SIZE = 500;
+const CACHE_BUFFER_SEC = 60; // 提前 60 秒失效，避免边界问题
+
 // 这里可以使用 provide/inject 来顶层注入
 // 或使用 store(pinia) 来管理控制 STS 令牌，减少重复逻辑
 export default function useAliyunSts() {
@@ -147,8 +155,18 @@ export default function useAliyunSts() {
 
     // 继续执行签名逻辑
     options = options || {};
+
+    const expiresOpt = options.expires ?? 1800;
+    const cacheKey = `${url}|${expiresOpt}`;
+
+    const cached = signatureUrlCache.get(cacheKey);
+    const cacheValidMs = (expiresOpt - CACHE_BUFFER_SEC) * 1000;
+    if (cached && Date.now() - cached.cachedAt < cacheValidMs) {
+      return cached.signedUrl;
+    }
+
     const method = options.method || 'GET';
-    const expires = Math.floor(Date.now() / 1000 + (options.expires || 1800));
+    const expires = Math.floor(Date.now() / 1000 + expiresOpt);
 
     const { /* origin, */ hostname, pathname } = new URL(url);
     const bucket = hostname.split('.')?.[0];
@@ -176,6 +194,11 @@ export default function useAliyunSts() {
     )}&security-token=${encodeURIComponent(
       aliyunStsState.value.securityToken
     )}`;
+
+    if (signatureUrlCache.size >= CACHE_MAX_SIZE) {
+      signatureUrlCache.clear();
+    }
+    signatureUrlCache.set(cacheKey, { signedUrl, cachedAt: Date.now() });
 
     return signedUrl;
   };
